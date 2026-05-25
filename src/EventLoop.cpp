@@ -1,0 +1,172 @@
+#include "EventLoop.h"
+#include "Channel.h"
+#include "Poller.h"
+#include "EPollPoller.h"
+
+#include <sys/eventfd.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <memory>
+
+//防止一个线程创建多个EventLoop
+__thread EventLoop* t_loopInThisThread = nullptr;
+
+//定义默认的Poller IO复用接口的超时时间
+const int kPollTimeMs = 10000;
+
+//创建wakeupfd，用来通知唤醒subReactor
+int creatEventfd()
+{
+    int evtfd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if(evtfd < 0)
+    {
+
+    }
+    return evtfd;
+}
+
+EventLoop::EventLoop()
+    : looping_(false)
+    , quit_(false)
+    , callingPendingFunctors_(false)
+    , threadId_(CurrentThread::tid())
+    , poller_(Poller::newDefaultPoller(this))
+    , wakeupFd_(creatEventfd())
+    , wakeupChannel_(new Channel(this, wakeupFd_))
+    , currentActiveChannel_(nullptr)
+{
+    if(t_loopInThisThread)
+    {
+
+    }
+    else
+    {
+        t_loopInThisThread=this;
+    }
+    
+    //设置wakeupfd的事件类型以及发生事件后的回调操作
+    wakeupChannel_->setReadCallback(std::bind(&EventLoop::handleRead, this));
+    //每一个EventLoop都有一个wakeupChannel，用来唤醒subReactor
+    wakeupChannel_->enableReading();
+}
+
+EventLoop::~EventLoop()
+{
+    wakeupChannel_->disableAll();
+    wakeupChannel_->remove();
+    ::close(wakeupFd_);
+    t_loopInThisThread=nullptr;
+}
+
+//开启事件循环
+void EventLoop::loop()
+{
+    looping_=true;
+    quit_=false;
+
+    while(!quit_)
+    {
+        activeChannels_.clear();
+        //监听两类fd 一种是clientfd，一种wakeupfd
+        pollReturnTime_=poller_->poll(kPollTimeMs,&activeChannels_);
+        for(Channel *channel:activeChannels_)
+        {
+            //Poller监听哪些channel发生事件了，然后上报给EventLoop，通知Channel处理对应的事件
+            channel->handleEvent(pollReturnTime_);
+        }
+        //执行当前EventLoop事件循环需要处理的回调操作
+        doPendingFunctors();
+    }
+}
+
+//退出事件循环  1.loop在自己线程中调用
+void EventLoop::quit()
+{
+    quit_=true;
+
+    if(!isInLoopThread()) //如果在其他线程中，调用的quit
+    {
+        wakeup();
+    }
+}
+
+//在当前loop中执行cb
+void EventLoop::runInLoop(Functor cb)
+{
+    if(isInLoopThread()) //在当前loop线程中执行cb
+    {
+        cb();
+    }
+    else //在非当前loop线程中执行cb
+    {
+        queueInLoop(cb);
+    }
+}
+
+//把cb放入队列中，唤醒loop所在的线程，执行cb
+void EventLoop::queueInLoop(Functor cb)
+{
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        pendingFunctors_.emplace_back(cb);
+    }
+    
+    //唤醒相应的，需要执行上面回调操作的loop的线程
+    if(!isInLoopThread() || callingPendingFunctors_)
+    {
+        wakeup();//唤醒loop所在线程
+    }
+}
+
+//处理wakeupfd的事件
+void EventLoop::handleRead()
+{
+    uint64_t one = 1;
+    ssize_t n = read(wakeupFd_, &one, sizeof(one));
+    if (n != sizeof(one))
+    {
+        
+    }
+}
+
+//用来唤醒loop所在的线程，向wakeupfd写入1
+void EventLoop::wakeup()
+{
+    uint64_t one = 1;
+    ssize_t n = ::write(wakeupFd_, &one, sizeof(one));
+    if (n != sizeof(one))
+    {
+        
+    }
+}
+
+void EventLoop::updateChannel(Channel *channel)
+{
+    poller_->updateChannel(channel);
+}
+
+void EventLoop::removeChannel(Channel *channel)
+{
+    poller_->removeChannel(channel);
+}
+
+bool EventLoop::hasChannel(Channel *channel)
+{
+    return poller_->hasChannel(channel);
+}
+
+void EventLoop::doPendingFunctors()//执行回调
+{
+   std::vector<Functor> functors;
+   callingPendingFunctors_=true;
+   {
+        std::unique_lock<std::mutex> lock(mutex_);
+        functors.swap(pendingFunctors_);
+   }
+   for(const Functor &functor:functors)
+   {
+       functor();
+   }
+   callingPendingFunctors_=false;
+}
