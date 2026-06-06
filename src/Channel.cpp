@@ -50,6 +50,10 @@ void Channel::handleEvent(Timestamp receiveTime)
             handleEventWithGuard(receiveTime);
         }
     }
+    else
+    {
+        handleEventWithGuard(receiveTime);
+    }
 }
 
 void Channel::handleEventWithGuard(Timestamp receiveTime)
