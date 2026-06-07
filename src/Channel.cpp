@@ -1,5 +1,6 @@
 #include "Channel.h"
 #include "EventLoop.h"
+#include "Logger.h"
 #include <sys/epoll.h>
 
 const int Channel::kNoneEvent = 0;
@@ -58,6 +59,8 @@ void Channel::handleEvent(Timestamp receiveTime)
 
 void Channel::handleEventWithGuard(Timestamp receiveTime)
 {
+    LOG_INFO("channel handleEvent revents:%d\n", revents_);
+    
     if((revents_ & EPOLLHUP)&&!(revents_ & EPOLLIN))
     {
         if(closeCallback_)

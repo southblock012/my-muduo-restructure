@@ -1,5 +1,6 @@
 #include "Logger.h"
 #include "Timestamp.h"
+#include "CurrentThread.h"
 
 #include <iostream>
 
@@ -25,16 +26,16 @@ void Logger::log(std::string msg)
     switch (logLevel_)
     {
     case INFO:
-        std::cout << "[INFO] " << time_str << " " << msg << std::endl;
+        std::cout << "[INFO] " << time_str << " thread=" << CurrentThread::tid() << " " << msg << std::endl;
         break;
     case ERROR:
-        std::cerr << "[ERROR] " << time_str << " " << msg << std::endl;
+        std::cerr << "[ERROR] " << time_str << " thread=" << CurrentThread::tid() << " " << msg << std::endl;
         break;
     case FATAL:
-        std::cerr << "[FATAL] " << time_str << " " << msg << std::endl;
+        std::cerr << "[FATAL] " << time_str << " thread=" << CurrentThread::tid() << " " << msg << std::endl;
         break;
     case DEBUG:
-        std::cout << "[DEBUG] " << time_str << " " << msg << std::endl;
+        std::cout << "[DEBUG] " << time_str << " thread=" << CurrentThread::tid() << " " << msg << std::endl;
         break;
     default:
         break;

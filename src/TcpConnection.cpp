@@ -10,6 +10,7 @@
 #include <unistd.h> // for close
 
 #include "TcpConnection.h"
+#include "Logger.h"
 #include "Socket.h"
 #include "Channel.h"
 #include "EventLoop.h"
@@ -18,7 +19,7 @@ static EventLoop *CheckLoopNotNull(EventLoop *loop)
 {
     if (loop == nullptr)
     {
-        
+        LOG_FATAL("%s:%s:%d mainLoop is null!\n", __FILE__, __FUNCTION__, __LINE__);
     }
     return loop;
 }
@@ -48,13 +49,13 @@ TcpConnection::TcpConnection(EventLoop *loop,
     channel_->setErrorCallback(
         std::bind(&TcpConnection::handleError, this));
 
-    
+    LOG_INFO("TcpConnection::ctor[%s] at fd=%d\n", name_.c_str(), sockfd);
     socket_->setKeepAlive(true);
 }
 
 TcpConnection::~TcpConnection()
 {
-    
+    LOG_INFO("TcpConnection::dtor[%s] at fd=%d state=%d\n", name_.c_str(), channel_->fd(), (int)state_);
 }
 
 void TcpConnection::send(const std::string &buf)
@@ -84,7 +85,7 @@ void TcpConnection::sendInLoop(const void *data, size_t len)
 
     if (state_ == kDisconnected) // 之前调用过该connection的shutdown 不能再进行发送了
     {
-        
+        LOG_ERROR("disconnected, give up writing");
     }
 
     // 表示channel_第一次开始写数据或者缓冲区没有待发送数据
@@ -106,7 +107,7 @@ void TcpConnection::sendInLoop(const void *data, size_t len)
             nwrote = 0;
             if (errno != EWOULDBLOCK) // EWOULDBLOCK表示非阻塞情况下没有数据后的正常返回 等同于EAGAIN
             {
-                
+                LOG_ERROR("TcpConnection::sendInLoop");
                 if (errno == EPIPE || errno == ECONNRESET) // SIGPIPE RESET
                 {
                     faultError = true;
@@ -195,7 +196,7 @@ void TcpConnection::handleRead(Timestamp receiveTime)
     else // 出错了
     {
         errno = savedErrno;
-        
+        LOG_ERROR("TcpConnection::handleRead");
         handleError();
     }
 }
@@ -226,17 +227,18 @@ void TcpConnection::handleWrite()
         }
         else
         {
-            
+            LOG_ERROR("TcpConnection::handleWrite");
         }
     }
     else
     {
-        
+        LOG_ERROR("TcpConnection fd=%d is down, no more writing", channel_->fd());
     }
 }
 
 void TcpConnection::handleClose()
 {
+    LOG_INFO("TcpConnection::handleClose fd=%d state=%d\n", channel_->fd(), (int)state_);
     
     setState(kDisconnected);
     channel_->disableAll();
@@ -259,7 +261,7 @@ void TcpConnection::handleError()
     {
         err = optval;
     }
-    
+    LOG_ERROR("TcpConnection::handleError name:%s - SO_ERROR:%d\n", name_.c_str(), err);
 }
 
 // 新增的零拷贝发送函数
@@ -272,7 +274,7 @@ void TcpConnection::sendFile(int fileDescriptor, off_t offset, size_t count) {
                 std::bind(&TcpConnection::sendFileInLoop, shared_from_this(), fileDescriptor, offset, count));
         }
     } else {
-        
+        LOG_ERROR("TcpConnection::sendFile - not connected");
     }
 }
 
@@ -283,7 +285,7 @@ void TcpConnection::sendFileInLoop(int fileDescriptor, off_t offset, size_t coun
     bool faultError = false; // 错误的标志位
 
     if (state_ == kDisconnecting) { // 表示此时连接已经断开就不需要发送数据了
-        
+        LOG_ERROR("disconnected, give up writing");
         return;
     }
 
@@ -298,7 +300,7 @@ void TcpConnection::sendFileInLoop(int fileDescriptor, off_t offset, size_t coun
             }
         } else { // bytesSent < 0
             if (errno != EWOULDBLOCK) { // 如果是非阻塞没有数据返回错误这个是正常显现等同于EAGAIN，否则就异常情况
-                
+                LOG_ERROR("TcpConnection::sendFileInLoop");
             }
             if (errno == EPIPE || errno == ECONNRESET) {
                 faultError = true;

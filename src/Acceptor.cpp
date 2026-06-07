@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include "Acceptor.h"
+#include "Logger.h"
 #include "InetAddress.h"
 #include "Socket.h"
 #include "Channel.h"
@@ -15,7 +16,7 @@ static int createNonblocking()
     int sockfd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_TCP);
     if (sockfd < 0)
     {
-        perror("socket error!");
+        LOG_FATAL("%s:%s:%d listen socket create err:%d\n", __FILE__, __FUNCTION__, __LINE__, errno);
     }
     return sockfd;
 }

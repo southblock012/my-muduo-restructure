@@ -1,4 +1,3 @@
-#include "Socket.h"
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -6,6 +5,9 @@
 #include <errno.h>
 #include <netinet/tcp.h>
 #include <cstring>
+
+#include "Socket.h"
+#include "Logger.h"
 
 Socket::~Socket()
 {
@@ -17,7 +19,7 @@ void Socket::bindAddress(const InetAddress& localaddr)
     int ret = ::bind(sockfd_, (sockaddr*)localaddr.getSockAddr(), sizeof(sockaddr_in));
     if (ret < 0)
     {
-        perror("Socket::bindAddress");
+        LOG_FATAL("bind sockfd:%d fail\n", sockfd_);
     }
 }
 
@@ -26,7 +28,7 @@ void Socket::listen()
     int ret = ::listen(sockfd_, 1024);
     if (ret < 0)
     {
-        perror("Socket::listen");
+        LOG_FATAL("listen sockfd:%d fail\n", sockfd_);
     }
 }
 
@@ -47,7 +49,7 @@ void Socket::shutdownWrite()
 {
     if (::shutdown(sockfd_, SHUT_WR) < 0)
     {
-        perror("Socket::shutdownWrite");
+        LOG_ERROR("shutdownWrite error");
     }
 }
 
